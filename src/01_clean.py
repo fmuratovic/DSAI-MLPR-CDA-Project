@@ -125,7 +125,7 @@ print("main sleeps:", len(main), " naps:", len(naps))
 calendar = pd.DataFrame({"night": pd.date_range(main.night.min(), main.night.max())})
 
 df = (calendar
-      .merge(main[["night", "eff", "tst", "tib", "deep", "rem",
+      .merge(main[["night", "eff", "tst", "tib", "deep", "rem", "waso", "sol",
                    "Start Time", "Wake-up time"]], on="night", how="left")
       .merge(nap_min, on="night", how="left")
       .merge(activity.rename(columns={"Date": "night"}), on="night", how="left"))
@@ -167,8 +167,26 @@ df["bedtime_lag1"] = df.bedtime.shift(1).where(prev_ok)
 df["bedtime_sd7"] = df.bedtime.rolling(7, min_periods=5).std().shift(1)
 df["weekend"] = df.night.dt.dayofweek.isin([4, 5]).astype(int)
 
+# outcomes, following the NSF sleep quality indicators
+# continuity: efficiency, WASO, sleep onset latency
+# duration:   total sleep time
+# architecture (exploratory): REM and deep sleep as a share of TST
 df["eff_poor"] = np.where(df.eff.isna(), np.nan, (df.eff < 85).astype(float))
+df["waso_poor"] = np.where(df.waso.isna(), np.nan, (df.waso >= 41).astype(float))
+df["rem_pct"] = 100 * df.rem / df.tst
+df["n3_pct"] = 100 * df.deep / df.tst
 df["restorative_pct"] = 100 * (df.deep + df.rem) / df.tst
+
+outcomes = ["eff", "tst", "waso", "sol", "rem_pct", "n3_pct"]
+print("\noutcome summary:")
+print(df[outcomes].describe().round(1).T)
+print("\nagainst NSF reference values:")
+print(f"  efficiency >=85%:      {100 * (df.eff >= 85).mean():.0f}% of nights")
+print(f"  WASO <=20 min:         {100 * (df.waso <= 20).mean():.0f}%")
+print(f"  WASO >=41 min:         {100 * (df.waso >= 41).mean():.0f}%")
+print(f"  latency <=15 min:      {100 * (df.sol <= 15).mean():.0f}%")
+print(f"  REM in 21-30% band:    {100 * df.rem_pct.between(21, 30).mean():.0f}%")
+print(f"  deep in 16-20% band:   {100 * df.n3_pct.between(16, 20).mean():.0f}%")
 
 predictors = ["steps", "kcal", "eff_lag1", "bedtime_lag1", "bedtime_sd7", "weekend"]
 
@@ -201,7 +219,8 @@ print("\nfinal n:", len(final))
 print("poor nights:", int(final.eff_poor.sum()),
       f"({100 * final.eff_poor.mean():.1f}%)")
 
-keep = (["night", "eff", "eff_poor", "restorative_pct", "tst", "tib", "deep", "rem",
+keep = (["night", "eff", "eff_poor", "tst", "waso", "waso_poor", "sol",
+         "rem_pct", "n3_pct", "restorative_pct", "tib", "deep", "rem",
          "bedtime", "waketime", "nap_min"] + predictors)
 final[keep].to_csv("data/processed/night_level.csv", index=False)
 
